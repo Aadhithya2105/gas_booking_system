@@ -1,0 +1,2646 @@
+<script type="text/javascript">
+  var gk_isXlsx = false;
+  var gk_xlsxFileLookup = {};
+  var gk_fileData = {};
+  function filledCell(cell) {
+    return cell !== "" && cell != null;
+  }
+  function loadFileData(filename) {
+    if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+      try {
+        var workbook = XLSX.read(gk_fileData[filename], { type: "base64" });
+        var firstSheetName = workbook.SheetNames[0];
+        var worksheet = workbook.Sheets[firstSheetName];
+
+        // Convert sheet to JSON to filter blank rows
+        var jsonData = XLSX.utils.sheet_to_json(worksheet, {
+          header: 1,
+          blankrows: false,
+          defval: "",
+        });
+        // Filter out blank rows (rows where all cells are empty, null, or undefined)
+        var filteredData = jsonData.filter((row) => row.some(filledCell));
+
+        // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+        var headerRowIndex = filteredData.findIndex(
+          (row, index) =>
+            row.filter(filledCell).length >=
+            filteredData[index + 1]?.filter(filledCell).length
+        );
+        // Fallback
+        if (headerRowIndex === -1 || headerRowIndex > 25) {
+          headerRowIndex = 0;
+        }
+
+        // Convert filtered JSON back to CSV
+        var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+        csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+        return csv;
+      } catch (e) {
+        console.error(e);
+        return "";
+      }
+    }
+    return gk_fileData[filename] || "";
+  }
+</script>
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Gas Booking Portal</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        font-family: "Roboto", sans-serif;
+        background: linear-gradient(135deg, #f5f5f5 0%, #e0e0e0 100%);
+        color: #333;
+        overflow-x: hidden;
+        line-height: 1.6;
+      }
+      .header {
+        background: #4a90e2;
+        color: white;
+        padding: 12px 30px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+        position: sticky;
+        top: 0;
+        z-index: 1000;
+      }
+      .header .logo {
+        font-size: 1.6em;
+        font-weight: 700;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding-left: 10px;
+      }
+      .header .logo::before {
+        content: "🔥";
+      }
+      .header nav {
+        display: flex;
+        gap: 25px;
+      }
+      .header nav a {
+        color: white;
+        text-decoration: none;
+        font-weight: 500;
+        font-size: 1em;
+        transition: color 0.3s ease, transform 0.3s ease;
+      }
+      .header nav a:hover {
+        color: #ff6f00;
+        transform: translateY(-2px);
+      }
+      .header .user {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding-right: 10px;
+      }
+      .header .user span {
+        font-size: 0.9em;
+        font-weight: 500;
+      }
+      .user-icon {
+        width: 30px;
+        height: 30px;
+        background: #ff6f00;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #4a90e2;
+        font-weight: bold;
+        font-size: 0.8em;
+        cursor: pointer;
+      }
+      .user-dropdown {
+        position: absolute;
+        top: 40px;
+        right: 10px;
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+        display: none;
+        flex-direction: column;
+        overflow: hidden;
+        z-index: 1001;
+      }
+      .user-dropdown.active {
+        display: flex;
+      }
+      .user-dropdown button {
+        background: none;
+        border: none;
+        padding: 10px 20px;
+        color: #333;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background 0.3s ease;
+        text-align: left;
+        width: 100%;
+      }
+      .user-dropdown button:hover {
+        background: #e6f0fa;
+        color: #4a90e2;
+      }
+      .hamburger {
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        width: 24px;
+        height: 18px;
+        cursor: pointer;
+        z-index: 1001;
+      }
+      .hamburger div {
+        width: 100%;
+        height: 3px;
+        background: white;
+        transition: all 0.3s ease;
+      }
+      .hamburger.active div:nth-child(1) {
+        transform: rotate(45deg) translate(5px, 5px);
+      }
+      .hamburger.active div:nth-child(2) {
+        opacity: 0;
+      }
+      .hamburger.active div:nth-child(3) {
+        transform: rotate(-45deg) translate(5px, -5px);
+      }
+      .sidebar {
+        width: 220px;
+        background: #ffffff;
+        position: fixed;
+        top: 0;
+        left: 0;
+        height: 100%;
+        padding-top: 80px;
+        box-shadow: 2px 0 10px rgba(0, 0, 0, 0.05);
+        transition: transform 0.3s ease;
+        z-index: 999;
+        transform: translateX(-100%);
+      }
+      .sidebar.visible {
+        transform: translateX(0);
+      }
+      .sidebar a {
+        display: flex;
+        align-items: center;
+        padding: 15px 25px;
+        color: #444;
+        text-decoration: none;
+        font-weight: 500;
+        transition: all 0.3s ease;
+        border-left: 4px solid transparent;
+      }
+      .sidebar a:hover,
+      .sidebar a.active {
+        background: #e6f0fa;
+        color: #4a90e2;
+        border-left: 4px solid #4a90e2;
+        transform: translateX(5px);
+      }
+      .main-content {
+        margin-left: 0;
+        padding: 30px;
+        min-height: calc(100vh - 60px);
+        transition: margin-left 0.3s ease;
+      }
+      .main-content.sidebar-visible {
+        margin-left: 240px;
+      }
+      .form-container {
+        display: none;
+        opacity: 0;
+        transform: translateY(20px);
+        transition: opacity 0.5s ease, transform 0.5s ease;
+      }
+      .form-container.active {
+        display: block;
+        opacity: 1;
+        transform: translateY(0);
+      }
+      #booking-section .form-container {
+        display: none;
+      }
+      #booking-section .form-container.active-step {
+        display: block;
+        opacity: 1;
+        transform: translateY(0);
+      }
+      .card {
+        background: white;
+        border-radius: 12px;
+        padding: 25px;
+        margin: 15px 0;
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+      }
+      .card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+      }
+      .card h2 {
+        font-size: 1.8em;
+        margin-bottom: 20px;
+        color: #4a90e2;
+        font-weight: 600;
+      }
+      .dashboard-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 20px;
+      }
+      .dashboard-card { /* Used for original stat cards and new link cards */
+        background: #f9fafc;
+        border-radius: 10px;
+        padding: 20px;
+        text-align: center;
+        transition: transform 0.3s ease, background 0.3s ease;
+      }
+      .dashboard-card:hover {
+        background: #e6f0fa;
+        transform: scale(1.03);
+      }
+       /* Styles for the new dashboard link cards */
+      .dashboard-link-card {
+        cursor: pointer;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+      }
+      .dashboard-link-card .dashboard-link-icon {
+        font-size: 2.5em; /* Increased icon size */
+        display: block;
+        margin-bottom: 15px; /* Space between icon and text */
+        color: #4a90e2; /* Icon color */
+      }
+      .dashboard-link-card h3 {
+        font-size: 1.1em;
+        color: #555;
+        margin-bottom: 0; /* Text directly below icon */
+      }
+      .quick-actions {
+        display: flex;
+        gap: 15px;
+        margin-top: 20px;
+      }
+      .form-container label {
+        display: block;
+        margin: 10px 0 5px;
+        font-weight: 500;
+        color: #444;
+      }
+      .form-container input,
+      .form-container select,
+      .form-container textarea {
+        width: 100%;
+        padding: 12px;
+        margin: 5px 0;
+        border: 1px solid #d9e2ec;
+        border-radius: 8px;
+        background: #f9fafc;
+        color: #333;
+        font-size: 1em;
+        transition: border-color 0.3s ease, box-shadow 0.3s ease;
+      }
+      .form-container input:focus,
+      .form-container select:focus,
+      .form-container textarea:focus {
+        border-color: #4a90e2;
+        box-shadow: 0 0 5px rgba(74, 144, 226, 0.2);
+        outline: none;
+      }
+      .form-container textarea {
+        height: 120px;
+        resize: none;
+      }
+      .form-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 20px;
+      }
+      .btn {
+        background: #4a90e2;
+        color: white;
+        padding: 12px 25px;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        font-weight: 600;
+        font-size: 1em;
+        transition: background 0.3s ease, transform 0.3s ease;
+        margin: 5px;
+      }
+      .btn:hover {
+        background: #3a78c2;
+        transform: translateY(-2px);
+      }
+      .btn:disabled {
+        background: #b0c4de;
+        cursor: not-allowed;
+        transform: none;
+      }
+      .status-message {
+        margin-top: 10px;
+        padding: 10px;
+        border-radius: 8px;
+        display: none;
+        font-size: 0.9em;
+        transition: opacity 0.3s ease;
+      }
+      .success {
+        background: rgba(46, 125, 50, 0.2);
+        color: #2e7d32;
+      }
+      .error {
+        background: rgba(255, 111, 0, 0.2);
+        color: #ff6f00;
+      }
+      .consumer-display {
+        background: #4a90e2;
+        color: white;
+        padding: 15px;
+        border-radius: 8px;
+        text-align: center;
+        margin: 20px 0;
+        font-weight: 600;
+        font-size: 1.2em;
+      }
+      .progress-bar {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 20px;
+        gap: 10px;
+      }
+      .progress-step {
+        flex: 1;
+        padding: 12px;
+        background: #e0e7f1;
+        color: #555;
+        font-weight: 600;
+        border-radius: 8px;
+        text-align: center;
+        transition: background 0.3s ease, color 0.3s ease;
+      }
+      .progress-step.active {
+        background: #4a90e2;
+        color: white;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 20px 0;
+        background: #f9fafc;
+        border-radius: 8px;
+        overflow: hidden;
+      }
+      th,
+      td {
+        padding: 12px;
+        text-align: left;
+        border-bottom: 1px solid #e0e7f1;
+      }
+      th {
+        background: #4a90e2;
+        color: white;
+        font-weight: 600;
+      }
+      td {
+        color: #444;
+      }
+      footer {
+        background: #4a90e2;
+        color: white;
+        text-align: center;
+        padding: 15px 0;
+        position: relative;
+        bottom: 0;
+        width: 100%;
+      }
+      @media (max-width: 768px) {
+        .sidebar {
+          transform: translateX(-100%);
+          width: 200px;
+        }
+        .main-content {
+          margin-left: 0;
+          padding: 20px;
+        }
+        .main-content.sidebar-visible {
+          margin-left: 200px;
+        }
+        .header {
+          padding: 10px 15px;
+          flex-wrap: wrap;
+          gap: 10px;
+        }
+        .header nav {
+          gap: 15px;
+        }
+        .header nav a {
+          font-size: 0.9em;
+        }
+        .header .logo {
+          font-size: 1.4em;
+        }
+        .form-grid {
+          grid-template-columns: 1fr;
+        }
+        .dashboard-grid {
+          grid-template-columns: 1fr; /* Single column for smaller screens */
+        }
+        .user-dropdown {
+          right: 5px;
+          top: 35px;
+        }
+      }
+    </style>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div class="header">
+      <div class="hamburger" id="hamburger">
+        <div></div>
+        <div></div>
+        <div></div>
+      </div>
+      <div class="logo">Indane</div>
+      <nav>
+        <a href="#" onclick="showSection('home')">Home</a>
+        <a href="#" onclick="showSection('dashboard')">Dashboard</a>
+        <a href="#" onclick="showSection('register')">New Connection</a>
+        <a href="#" onclick="showSection('booking')">Book Cylinder</a>
+        <a href="#" onclick="showSection('tracking')">Booking History</a>
+        <a href="#" onclick="showSection('transactions')"
+          >Transaction History</a
+        >
+        <a href="#" onclick="showSection('payment')">Make Payment</a>
+        <a href="#" onclick="showSection('cancel')">Cancel Booking</a>
+        <a href="#" onclick="showSection('feedback')">Feedback</a>
+        <a href="#" onclick="showSection('deliveryIssues')">Report Issues</a>
+        <a href="#" onclick="showSection('sos')">SOS Alert</a>
+        <a href="#" onclick="showSection('admin')">Admin Login</a>
+      </nav>
+      <div class="user">
+        <span id="user-name">Guest</span>
+        <div class="user-icon" id="user-icon">U</div>
+        <div class="user-dropdown" id="user-dropdown">
+          <button onclick="showSection('updateProfile')">Update Profile</button>
+          <button onclick="logout()">Logout</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="sidebar" id="sidebar">
+      <a href="#" onclick="showSection('dashboard')" id="nav-dashboard"
+        >Dashboard</a
+      >
+      <a href="#" onclick="showSection('register')" id="nav-register"
+        >New Connection</a
+      >
+      <a href="#" onclick="showSection('booking')" id="nav-booking"
+        >Book Cylinder</a
+      >
+      <a href="#" onclick="showSection('tracking')" id="nav-tracking"
+        >Booking History</a
+      >
+      <a href="#" onclick="showSection('transactions')" id="nav-transactions"
+        >Transaction History</a
+      >
+      <a href="#" onclick="showSection('payment')" id="nav-payment"
+        >Make Payment</a
+      >
+      <a href="#" onclick="showSection('cancel')" id="nav-cancel"
+        >Cancel Booking</a
+      >
+      <a href="#" onclick="showSection('feedback')" id="nav-feedback"
+        >Feedback</a
+      >
+      <a
+        href="#"
+        onclick="showSection('deliveryIssues')"
+        id="nav-deliveryIssues"
+        >Report Issues</a
+      >
+      <a href="#" onclick="showSection('sos')" id="nav-sos">SOS Alert</a>
+      <a href="#" onclick="showSection('admin')" id="nav-admin">Admin</a>
+    </div>
+
+    <div class="main-content" id="main-content">
+      <div id="home-section" class="form-container active">
+        <div class="card">
+          <h2>Login to Indane</h2>
+          <label for="login-consumerNo">Consumer Number</label>
+          <input
+            type="text"
+            id="login-consumerNo"
+            placeholder="Enter Consumer Number"
+            required
+          />
+          <label for="login-mobile">Mobile Number</label>
+          <input
+            type="tel"
+            id="login-mobile"
+            placeholder="Enter Registered Mobile Number"
+            required
+          />
+          <button class="btn" onclick="login()">Login</button>
+          <div id="login-status" class="status-message"></div>
+        </div>
+        <button class="btn" onclick="showSection('register')">
+          New Registration
+        </button>
+      </div>
+
+      <div id="admin-section" class="form-container">
+        <div class="card">
+          <h2>Admin Login</h2>
+          <label for="admin-username">Username</label>
+          <input
+            type="text"
+            id="admin-username"
+            placeholder="Enter Admin Username"
+            required
+          />
+          <label for="admin-password">Password</label>
+          <input
+            type="password"
+            id="admin-password"
+            placeholder="Enter Admin Password"
+            required
+          />
+          <button class="btn" onclick="adminLogin()">Login</button>
+          <div id="admin-status" class="status-message"></div>
+        </div>
+        <div id="admin-dashboard" class="card" style="display: none">
+          <h2>Admin Dashboard</h2>
+          <button class="btn" onclick="loadAdminData()">Refresh Data</button>
+          <button class="btn" onclick="logout()">Logout</button>
+          <div id="admin-stats">
+            <p>
+              <strong>Total SOS Alerts:</strong>
+              <span id="admin-total-sos">0</span>
+            </p>
+          </div>
+          <div id="users-table"></div>
+          <div id="bookings-table"></div>
+          <div id="payments-table"></div>
+          <div id="feedback-table"></div>
+          <div id="delivery-issues-table"></div>
+          <div id="sos-alerts-table"></div>
+        </div>
+      </div>
+
+      <div id="register-section" class="form-container">
+        <div class="card">
+          <h2>New Connection Form</h2>
+          <p class="note">Your Connection Request has been Approved.</p>
+          <div class="form-grid">
+            <div>
+              <label for="register-requestNo">Request Number</label>
+              <input
+                type="text"
+                id="register-requestNo"
+                value="AUTO-GENERATED"
+                readonly
+              />
+              <label for="register-name">Name</label>
+              <input
+                type="text"
+                id="register-name"
+                placeholder="Enter Full Name"
+                required
+              />
+              <label for="register-email">Email</label>
+              <input
+                type="email"
+                id="register-email"
+                placeholder="Enter Email"
+                required
+              />
+              <label for="register-dob">Date of Birth</label>
+              <input type="date" id="register-dob" required />
+              <label for="register-marital">Marital Status</label>
+              <select id="register-marital" required>
+                <option value="Married">Married</option>
+                <option value="Unmarried">Unmarried</option>
+              </select>
+            </div>
+            <div>
+              <label for="register-mobile">Mobile Number</label>
+              <input
+                type="tel"
+                id="register-mobile"
+                placeholder="Enter Mobile Number"
+                required
+              />
+              <label for="register-gender">Gender</label>
+              <select id="register-gender" required>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+                <option value="Other">Other</option>
+              </select>
+              <label for="register-nationality">Nationality</label>
+              <input
+                type="text"
+                id="register-nationality"
+                placeholder="Enter Nationality"
+                required
+              />
+              <label for="register-address">Address</label>
+              <input
+                type="text"
+                id="register-address"
+                placeholder="Enter Address"
+                required
+              />
+              <label for="register-appliedDate">Applied Date</label>
+              <input
+                type="text"
+                id="register-appliedDate"
+                value="" 
+                readonly
+              />
+            </div>
+            <div>
+              <label for="register-state">State</label>
+              <input
+                type="text"
+                id="register-state"
+                placeholder="Enter State"
+                required
+              />
+              <label for="register-aadhaar">Aadhaar Number</label>
+              <input
+                type="text"
+                id="register-aadhaar"
+                placeholder="Enter Aadhaar Number"
+                required
+              />
+            </div>
+          </div>
+          <h3>Spouse or Father Details</h3>
+          <div class="form-grid">
+            <div>
+              <label for="register-related">Select Related</label>
+              <select id="register-related" required>
+                <option value="Spouse">Spouse</option>
+                <option value="Father">Father</option>
+              </select>
+              <label for="register-related-firstName">First Name</label>
+              <input
+                type="text"
+                id="register-related-firstName"
+                placeholder="Enter First Name"
+                required
+              />
+            </div>
+            <div>
+              <label for="register-related-lastName">Last Name</label>
+              <input
+                type="text"
+                id="register-related-lastName"
+                placeholder="Enter Last Name"
+                required
+              />
+              <label for="register-related-address"
+                >Spouse/Father Address</label
+              >
+              <input
+                type="text"
+                id="register-related-address"
+                placeholder="Enter Address"
+                required
+              />
+            </div>
+            <div>
+              <label for="register-city">City/Town/Village</label>
+              <input
+                type="text"
+                id="register-city"
+                placeholder="Enter City/Town/Village"
+                required
+              />
+              <label for="register-pin">ZIP Code</label>
+              <input
+                type="text"
+                id="register-pin"
+                placeholder="Enter PIN Code"
+                required
+              />
+            </div>
+          </div>
+          <button class="btn" onclick="registerUser()">Register</button>
+          <button class="btn" onclick="showSection('home')">
+            Back to Home
+          </button>
+          <div id="register-status" class="status-message"></div>
+          <div
+            id="consumer-display"
+            class="consumer-display"
+            style="display: none"
+          ></div>
+        </div>
+      </div>
+
+      <div id="updateProfile-section" class="form-container">
+        <div class="card">
+          <h2>Update Profile</h2>
+          <div class="form-grid">
+            <div>
+              <label for="update-name">Name</label>
+              <input
+                type="text"
+                id="update-name"
+                placeholder="Enter Full Name"
+                required
+              />
+              <label for="update-email">Email</label>
+              <input
+                type="email"
+                id="update-email"
+                placeholder="Enter Email"
+                required
+              />
+              <label for="update-mobile">Mobile Number</label>
+              <input
+                type="tel"
+                id="update-mobile"
+                placeholder="Enter Mobile Number"
+                required
+              />
+            </div>
+            <div>
+              <label for="update-address">Address</label>
+              <input
+                type="text"
+                id="update-address"
+                placeholder="Enter Address"
+                required
+              />
+              <label for="update-state">State</label>
+              <input
+                type="text"
+                id="update-state"
+                placeholder="Enter State"
+                required
+              />
+              <label for="update-pin">ZIP Code</label>
+              <input
+                type="text"
+                id="update-pin"
+                placeholder="Enter PIN Code"
+                required
+              />
+            </div>
+          </div>
+          <button class="btn" onclick="updateProfile()">Update Profile</button>
+          <button class="btn" onclick="showSection('dashboard')">
+            Back to Dashboard
+          </button>
+          <div id="update-status" class="status-message"></div>
+        </div>
+      </div>
+
+      <div id="dashboard-section" class="form-container">
+        <div class="card">
+          <h2>Your Dashboard</h2>
+          <div class="dashboard-grid">
+            <!-- Content will be dynamically generated by updateDashboard() -->
+          </div>
+          <div class="quick-actions">
+            <button class="btn" onclick="showSection('booking')">
+              Book New Cylinder
+            </button>
+            <button class="btn" onclick="showSection('tracking')">
+              Check History
+            </button>
+            <button class="btn" onclick="showSection('feedback')">
+              Submit Feedback
+            </button>
+          </div>
+        </div>
+        <button class="btn" onclick="logout()">Logout</button>
+      </div>
+
+      <div id="booking-section" class="form-container">
+        <div class="card">
+          <h2>Book Your Cylinder</h2>
+          <div class="progress-bar">
+            <div class="progress-step" id="step-book">1. Book</div>
+            <div class="progress-step" id="step-confirm">2. Confirm</div>
+          </div>
+
+          <div id="book-step" class="form-container active-step">
+            <label>Consumer Number</label>
+            <input type="text" id="book-consumerNo-display" value="" readonly />
+            <label for="book-mobile">Mobile Number</label>
+            <input type="tel" id="book-mobile" readonly />
+            <label for="book-cylinderType">Cylinder Type</label>
+            <select id="book-cylinderType" required>
+              <option value="">Select Cylinder Type</option>
+              <option value="14.2kg">14.2 kg Domestic</option>
+              <option value="5kg">5 kg Domestic</option>
+            </select>
+            <label for="book-quantity"
+              >Quantity (1 per booking, max 3 per month)</label
+            >
+            <input
+              type="number"
+              id="book-quantity"
+              placeholder="Enter Quantity (1 only)"
+              min="1"
+              max="1"
+              value="1"
+              readonly
+              required
+            />
+            <label for="book-bookingDate">Booking Date</label>
+            <input type="date" id="book-bookingDate" readonly />
+            <label for="book-deliveryAddress">Delivery Address</label>
+            <input type="text" id="book-deliveryAddress" readonly />
+            <button class="btn" onclick="nextStep('book')">Next</button>
+            <button class="btn" onclick="showSection('dashboard')">
+              Back to Dashboard
+            </button>
+            <div id="book-status" class="status-message"></div>
+          </div>
+
+          <div id="confirm-step" class="form-container">
+            <h3>Confirm Your Booking</h3>
+            <p>
+              <strong>Booking ID:</strong> <span id="confirm-bookingId"></span>
+            </p>
+            <p>
+              <strong>Cylinder Type:</strong>
+              <span id="confirm-cylinderType"></span>
+            </p>
+            <p>
+              <strong>Quantity:</strong> <span id="confirm-quantity"></span>
+            </p>
+            <p>
+              <strong>Delivery Date:</strong>
+              <span id="confirm-deliveryDate"></span>
+            </p>
+            <p>
+              <strong>Total Amount:</strong> ₹<span id="49f-totalAmount"></span>
+            </p>
+            <button class="btn" onclick="nextStep('confirm')">Confirm</button>
+            <button class="btn" onclick="cancelBooking()">Cancel</button>
+            <button class="btn" onclick="previousStep('confirm')">Back</button>
+            <div id="confirm-status" class="status-message"></div>
+          </div>
+
+          <div id="summary-step" class="form-container">
+            <h3>Booking Summary</h3>
+            <div id="summary-content"></div>
+            <p
+              id="delivery-message"
+              style="color: #2e7d32; font-weight: 600"
+            ></p>
+            <button class="btn" onclick="showSection('dashboard')">
+              Back to Dashboard
+            </button>
+            <button class="btn" onclick="showSection('payment')">
+              Proceed to Payment
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div id="payment-section" class="form-container">
+        <div class="card">
+          <h2>Make Payment</h2>
+          <label for="pay-bookingId">Booking ID</label>
+          <select id="pay-bookingId" onchange="updatePaymentDetails()" required>
+            <option value="">Select Booking ID</option>
+          </select>
+          <label>Consumer Number</label>
+          <input type="text" id="pay-consumerNo" value="" readonly />
+          <label>Consumer Name</label>
+          <input type="text" id="pay-consumerName" value="" readonly />
+          <label>Amount (₹)</label>
+          <input type="number" id="payment-amount" readonly />
+          <label for="payment-method">Payment Method</label>
+          <select id="payment-method" required onchange="updatePaymentFields()">
+            <option value="">Select Payment Method</option>
+            <option value="card">Card</option>
+            <option value="cash">Cash</option>
+            <option value="UPI">UPI</option>
+          </select>
+          <div id="card-details" style="display: none">
+            <label for="card-number">Card Number</label>
+            <input
+              type="text"
+              id="card-number"
+              placeholder="Enter 16-digit Card Number"
+            />
+            <label for="card-expiry">Expiry Date (MM/YY)</label>
+            <input type="text" id="card-expiry" placeholder="MM/YY" />
+            <label for="card-cvv">CVV</label>
+            <input type="text" id="card-cvv" placeholder="Enter 3 or 4-digit CVV" />
+          </div>
+          <div id="upi-details" style="display: none">
+            <label for="upi-id">UPI ID</label>
+            <input
+              type="text"
+              id="upi-id"
+              placeholder="Enter UPI ID (e.g., user@bank)"
+            />
+          </div>
+          <label for="payment-reference"
+            >Transaction Reference (Optional)</label
+          >
+          <input
+            type="text"
+            id="payment-reference"
+            placeholder="Enter Transaction Reference (Optional)"
+          />
+          <button class="btn" onclick="cancelPayment()">Cancel Payment</button>
+          <button class="btn" onclick="makePayment()">Complete Payment</button>
+          <button class="btn" onclick="showSection('dashboard')">
+            Back to Dashboard
+          </button>
+          <div id="payment-status" class="status-message"></div>
+        </div>
+      </div>
+
+      <div id="transactions-section" class="form-container">
+        <div class="card">
+          <h2>Transaction History</h2>
+          <label>Consumer Number</label>
+          <input type="text" id="trans-consumerNo-display" value="" readonly />
+          <div id="transactions-table"></div>
+          <button class="btn" onclick="showSection('dashboard')">
+            Back to Dashboard
+          </button>
+        </div>
+      </div>
+
+      <div id="tracking-section" class="form-container">
+        <div class="card">
+          <h2>Track Your Booking</h2>
+          <label>Consumer Number</label>
+          <input type="text" id="track-consumerNo-display" value="" readonly />
+          <label for="track-bookingId">Booking ID</label>
+          <input
+            type="text"
+            id="track-bookingId"
+            placeholder="Enter Booking ID"
+            required
+          />
+          <button class="btn" onclick="trackBooking()">Track</button>
+          <button class="btn" onclick="showSection('dashboard')">
+            Back to Dashboard
+          </button>
+          <div id="track-status" class="status-message"></div>
+        </div>
+      </div>
+
+      <div id="cancel-section" class="form-container">
+        <div class="card">
+          <h2>Cancel Booking</h2>
+          <label>Consumer Number</label>
+          <input type="text" id="cancel-consumerNo-display" value="" readonly />
+          <label for="cancel-bookingId">Booking ID</label>
+          <select id="cancel-bookingId" required>
+            <option value="">Select Booking ID</option>
+          </select>
+          <button class="btn" onclick="cancelBookingFromPage()">
+            Cancel Booking
+          </button>
+          <button class="btn" onclick="showSection('dashboard')">
+            Back to Dashboard
+          </button>
+          <div id="cancel-status" class="status-message"></div>
+        </div>
+      </div>
+
+      <div id="feedback-section" class="form-container">
+        <div class="card">
+          <h2>Submit Your Feedback</h2>
+          <label for="feedback-category">Category</label>
+          <select id="feedback-category" required>
+            <option value="">Select Category</option>
+            <option value="Service Quality">Service Quality</option>
+            <option value="Delivery">Delivery</option>
+            <option value="Payment">Payment</option>
+            <option value="Other">Other</option>
+          </select>
+          <label for="feedback-rating">Rating (1-5)</label>
+          <select id="feedback-rating" required>
+            <option value="">Select Rating</option>
+            <option value="1">1 - Poor</option>
+            <option value="2">2 - Fair</option>
+            <option value="3">3 - Average</option>
+            <option value="4">4 - Good</option>
+            <option value="5">5 - Excellent</option>
+          </select>
+          <label for="feedback-comment">Feedback</label>
+          <textarea
+            id="feedback-comment"
+            placeholder="Share your feedback..."
+            required
+          ></textarea>
+          <button class="btn" onclick="submitFeedback()">Submit</button>
+          <button class="btn" onclick="showSection('dashboard')">
+            Back to Dashboard
+          </button>
+          <div id="feedback-status" class="status-message"></div>
+        </div>
+      </div>
+
+      <div id="deliveryIssues-section" class="form-container">
+        <div class="card">
+          <h2>Report Delivery Issues</h2>
+          <label for="issue-bookingId">Booking ID</label>
+          <input
+            type="text"
+            id="issue-bookingId"
+            placeholder="Enter Booking ID"
+            required
+          />
+          <label for="issue-type">Issue Type</label>
+          <select id="issue-type" required>
+            <option value="">Select Issue Type</option>
+            <option value="Delayed">Delayed Delivery</option>
+            <option value="Damaged">Damaged Cylinder</option>
+            <option value="Not Delivered">Not Delivered</option>
+            <option value="Other">Other</option>
+          </select>
+          <label for="issue-description">Issue Description</label>
+          <textarea
+            id="issue-description"
+            placeholder="Describe the issue..."
+            required
+          ></textarea>
+          <button class="btn" onclick="reportDeliveryIssue()">Submit</button>
+          <button class="btn" onclick="showSection('dashboard')">
+            Back to Dashboard
+          </button>
+          <div id="issue-status" class="status-message"></div>
+        </div>
+      </div>
+
+      <div id="sos-section" class="form-container">
+        <div class="card">
+          <h2>SOS Emergency Alert</h2>
+          <p>Click the button below to send an SOS alert to the system.</p>
+          <label>Location</label>
+          <input type="text" id="sos-location" readonly />
+          <button class="btn" onclick="sendSOS()">Send SOS</button>
+          <div id="sos-status" class="status-message"></div>
+        </div>
+      </div>
+    </div>
+
+    <footer>
+      <p>© 2025 Indane Gas Booking System</p>
+    </footer>
+
+    <script>
+      let currentStep = "book";
+      let currentUser = null;
+      let bookingData = {};
+      let paymentData = {};
+      let isAdmin = false;
+      let isSidebarVisible = false;
+
+      const cylinderPrices = {
+        "14.2kg": 800,
+        "5kg": 400,
+      };
+
+      function initializeStorage() {
+        if (!localStorage.getItem("users"))
+          localStorage.setItem("users", JSON.stringify([]));
+        if (!localStorage.getItem("bookings"))
+          localStorage.setItem("bookings", JSON.stringify([]));
+        if (!localStorage.getItem("payments"))
+          localStorage.setItem("payments", JSON.stringify([]));
+        if (!localStorage.getItem("feedback"))
+          localStorage.setItem("feedback", JSON.stringify([]));
+        if (!localStorage.getItem("deliveryIssues"))
+          localStorage.setItem("deliveryIssues", JSON.stringify([]));
+        if (!localStorage.getItem("sosAlerts"))
+          localStorage.setItem("sosAlerts", JSON.stringify([]));
+        if (!localStorage.getItem("deliveries"))
+          localStorage.setItem("deliveries", JSON.stringify([]));
+      }
+
+      initializeStorage();
+
+      document.getElementById("hamburger").addEventListener("click", () => {
+        isSidebarVisible = !isSidebarVisible;
+        const sidebar = document.getElementById("sidebar");
+        const mainContent = document.getElementById("main-content");
+        const hamburger = document.getElementById("hamburger");
+
+        if (isSidebarVisible) {
+          sidebar.classList.add("visible");
+          mainContent.classList.add("sidebar-visible");
+          hamburger.classList.add("active");
+        } else {
+          sidebar.classList.remove("visible");
+          mainContent.classList.remove("sidebar-visible");
+          hamburger.classList.remove("active");
+        }
+      });
+
+      document.getElementById("user-icon").addEventListener("click", () => {
+        if (!currentUser) return; // Prevent dropdown if not logged in
+        const dropdown = document.getElementById("user-dropdown");
+        dropdown.classList.toggle("active");
+      });
+
+      document.addEventListener("click", (e) => {
+        const dropdown = document.getElementById("user-dropdown");
+        const userIcon = document.getElementById("user-icon");
+        if (!userIcon.contains(e.target) && !dropdown.contains(e.target)) {
+          dropdown.classList.remove("active");
+        }
+      });
+
+      function generateId() {
+        return Math.random().toString(36).substr(2, 9);
+      }
+
+      function showStatus(elementId, message, isSuccess) {
+        const statusElement = document.getElementById(elementId);
+        statusElement.textContent = message;
+        statusElement.className = `status-message ${
+          isSuccess ? "success" : "error"
+        }`;
+        statusElement.style.display = "block";
+        setTimeout(() => {
+          statusElement.style.display = "none";
+        }, 8000);
+      }
+
+      function calculateDeliveryDate(bookingDate) {
+        let deliveryDate = new Date(bookingDate);
+        let daysToAdd = 2;
+
+        for (let i = 0; i < daysToAdd; i++) {
+          deliveryDate.setDate(deliveryDate.getDate() + 1);
+          if (deliveryDate.getDay() === 0) { // Skip Sunday during addition
+            deliveryDate.setDate(deliveryDate.getDate() + 1);
+          }
+        }
+
+        // Ensure final delivery date is not Sunday
+        while (deliveryDate.getDay() === 0) {
+          deliveryDate.setDate(deliveryDate.getDate() + 1);
+        }
+
+        return deliveryDate.toISOString().split("T")[0];
+      }
+
+      function checkMonthlyBookingLimit(consumerNo) {
+        const bookings = getBookings();
+        const currentMonth = new Date().getMonth();
+        const currentYear = new Date().getFullYear();
+
+        const monthlyBookings = bookings.filter((booking) => {
+          const bookingDate = new Date(booking.createdAt);
+          return (
+            booking.consumerNo === consumerNo &&
+            bookingDate.getMonth() === currentMonth &&
+            bookingDate.getFullYear() === currentYear &&
+            (booking.status === "Pending" ||
+              booking.status === "Confirmed" ||
+              booking.status === "Delivered")
+          );
+        });
+
+        const totalCylinders = monthlyBookings.reduce(
+          (sum, booking) => sum + booking.quantity,
+          0
+        );
+        return totalCylinders >= 3;
+      }
+
+      function showSection(sectionId) {
+        console.log(`Attempting to show section: ${sectionId}`);
+
+        const restrictedSections = [
+          "dashboard",
+          "booking",
+          "tracking",
+          "transactions",
+          "cancel",
+          "feedback",
+          "deliveryIssues",
+          "sos",
+          "payment",
+          "updateProfile",
+        ];
+
+        if (restrictedSections.includes(sectionId) && !currentUser) {
+          showStatus("login-status", "Please login first.", false);
+          sectionId = "home";
+        }
+
+        document.querySelectorAll(".form-container").forEach((section) => {
+          section.classList.remove("active");
+          section.style.display = "none";
+        });
+
+        document.querySelectorAll(".sidebar a").forEach((link) => {
+          link.classList.remove("active");
+        });
+
+        const section = document.getElementById(`${sectionId}-section`);
+        if (section) {
+          section.classList.add("active");
+          section.style.display = "block";
+          console.log(`Section ${sectionId} displayed successfully`);
+        } else {
+          console.error(`Section ${sectionId}-section not found in the DOM`);
+        }
+
+        const sidebarLink = document.getElementById(`nav-${sectionId}`);
+        if (sidebarLink) {
+          sidebarLink.classList.add("active");
+        }
+        
+        if (sectionId === 'register') {
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('register-appliedDate').value = today;
+        }
+
+        if (sectionId === "booking") {
+          currentStep = "book";
+          bookingData = {};
+          paymentData = {};
+          updateProgressBar();
+          showStep("book");
+          if (currentUser) {
+            document.getElementById("book-consumerNo-display").value =
+              currentUser.consumerNo;
+            document.getElementById("book-mobile").value = currentUser.mobile;
+            document.getElementById("book-deliveryAddress").value =
+              currentUser.address;
+          }
+          document.getElementById("book-cylinderType").value = "";
+          document.getElementById("book-quantity").value = "1";
+          document.getElementById("book-bookingDate").value = new Date()
+            .toISOString()
+            .split("T")[0];
+        }
+
+        if (sectionId === "payment" && currentUser) {
+          document.getElementById("pay-consumerNo").value =
+            currentUser.consumerNo;
+          document.getElementById("pay-consumerName").value = currentUser.name;
+          loadPendingBookingsForPayment();
+        }
+
+        if (sectionId === "tracking" && currentUser) {
+          document.getElementById("track-consumerNo-display").value =
+            currentUser.consumerNo;
+        }
+
+        if (sectionId === "transactions" && currentUser) {
+          document.getElementById("trans-consumerNo-display").value =
+            currentUser.consumerNo;
+          loadTransactionHistory();
+        }
+
+        if (sectionId === "cancel" && currentUser) {
+          document.getElementById("cancel-consumerNo-display").value =
+            currentUser.consumerNo;
+          loadCancellableBookings();
+        }
+
+        if (sectionId === "dashboard" && currentUser) {
+          updateDashboard();
+        }
+
+        if (sectionId === "admin") {
+          document.getElementById("admin-dashboard").style.display = "none";
+          // document.getElementById("user-name").textContent = "Guest"; // Keep admin name if admin logged in
+        }
+
+        if (sectionId === "home" || (sectionId === "register" && !currentUser)) {
+          document.getElementById("user-name").textContent = "Guest";
+        }
+
+        if (sectionId === "sos" && currentUser) {
+          document.getElementById("sos-location").value =
+            currentUser.address || "N/A";
+        }
+
+        if (sectionId === "updateProfile" && currentUser) {
+          populateProfileForm();
+        }
+
+        isSidebarVisible = false;
+        const sidebar = document.getElementById("sidebar");
+        const mainContent = document.getElementById("main-content");
+        const hamburger = document.getElementById("hamburger");
+        sidebar.classList.remove("visible");
+        mainContent.classList.remove("sidebar-visible");
+        hamburger.classList.remove("active");
+        document.getElementById("user-dropdown").classList.remove("active");
+      }
+
+      function updateProgressBar() {
+        document.querySelectorAll(".progress-step").forEach((step) => {
+          step.classList.remove("active");
+        });
+        const currentStepElement = document.getElementById(`step-${currentStep}`);
+        if (currentStepElement) {
+            currentStepElement.classList.add("active");
+        }
+      }
+
+      function showStep(stepId) {
+        document
+          .querySelectorAll("#booking-section .form-container")
+          .forEach((container) => {
+            container.classList.remove("active-step");
+            container.style.display = "none";
+          });
+        const stepElement = document.getElementById(`${stepId}-step`);
+        if(stepElement){
+            stepElement.classList.add("active-step");
+            stepElement.style.display = "block";
+        }
+        currentStep = stepId;
+        updateProgressBar();
+      }
+
+      function getUsers() {
+        return JSON.parse(localStorage.getItem("users")) || [];
+      }
+
+      function saveUsers(users) {
+        localStorage.setItem("users", JSON.stringify(users));
+      }
+
+      function getBookings() {
+        return JSON.parse(localStorage.getItem("bookings")) || [];
+      }
+
+      function saveBookings(bookings) {
+        localStorage.setItem("bookings", JSON.stringify(bookings));
+      }
+
+      function getPayments() {
+        return JSON.parse(localStorage.getItem("payments")) || [];
+      }
+
+      function savePayments(payments) {
+        localStorage.setItem("payments", JSON.stringify(payments));
+      }
+
+      function getFeedback() {
+        return JSON.parse(localStorage.getItem("feedback")) || [];
+      }
+
+      function saveFeedback(feedback) {
+        localStorage.setItem("feedback", JSON.stringify(feedback));
+      }
+
+      function getDeliveryIssues() {
+        return JSON.parse(localStorage.getItem("deliveryIssues")) || [];
+      }
+
+      function saveDeliveryIssues(issues) {
+        localStorage.setItem("deliveryIssues", JSON.stringify(issues));
+      }
+
+      function getSOSAlerts() {
+        return JSON.parse(localStorage.getItem("sosAlerts")) || [];
+      }
+
+      function saveSOSAlerts(alerts) {
+        localStorage.setItem("sosAlerts", JSON.stringify(alerts));
+      }
+
+      function getDeliveries() {
+        return JSON.parse(localStorage.getItem("deliveries")) || [];
+      }
+
+      function saveDeliveries(deliveries) {
+        localStorage.setItem("deliveries", JSON.stringify(deliveries));
+      }
+
+      function getUser(consumerNo, mobile) {
+        const users = getUsers();
+        return (
+          users.find(
+            (user) => user.consumerNo === consumerNo && user.mobile === mobile
+          ) || null
+        );
+      }
+
+      function getUserByEmailOrMobile(email, mobile) {
+        const users = getUsers();
+        return (
+          users.find(
+            (user) => user.email === email || user.mobile === mobile
+          ) || null
+        );
+      }
+
+      function updateUser(consumerNo, update) {
+        const users = getUsers();
+        const userIndex = users.findIndex(
+          (user) => user.consumerNo === consumerNo
+        );
+        if (userIndex !== -1) {
+          users[userIndex] = { ...users[userIndex], ...update };
+          saveUsers(users);
+        }
+      }
+
+      function getUserBookings(consumerNo) {
+        const bookings = getBookings();
+        return bookings.filter((booking) => booking.consumerNo === consumerNo);
+      }
+
+      function getBooking(bookingId, consumerNo) {
+        const bookings = getBookings();
+        return (
+          bookings.find(
+            (booking) =>
+              booking.id === bookingId && booking.consumerNo === consumerNo
+          ) || null
+        );
+      }
+
+      function updateBooking(bookingId, update) {
+        const bookings = getBookings();
+        const bookingIndex = bookings.findIndex(
+          (booking) => booking.id === bookingId
+        );
+        if (bookingIndex !== -1) {
+          bookings[bookingIndex] = { ...bookings[bookingIndex], ...update };
+          saveBookings(bookings);
+        }
+      }
+
+      function getUserPayments(consumerNo) {
+        const payments = getPayments();
+        const bookings = getBookings();
+        const userBookingIds = bookings
+          .filter((b) => b.consumerNo === consumerNo)
+          .map((b) => b.id);
+        return payments.filter((payment) =>
+          userBookingIds.includes(payment.bookingId)
+        );
+      }
+
+      function updatePayment(paymentId, update) {
+        const payments = getPayments();
+        const paymentIndex = payments.findIndex(
+          (payment) => payment.id === paymentId
+        );
+        if (paymentIndex !== -1) {
+          payments[paymentIndex] = { ...payments[paymentIndex], ...update };
+          savePayments(payments);
+        }
+      }
+
+      function sendSMS(mobile, message) {
+        console.log(`SMS to ${mobile}: ${message}`);
+        sendNotificationSMS(mobile, message);
+      }
+
+      function sendNotificationSMS(mobile, originalMessage) {
+        const timestamp = new Date().toISOString().split("T")[0];
+        const notificationMessage = `Notification [${timestamp}]: You have a new update - ${originalMessage}`;
+        console.log(`Notification SMS to ${mobile}: ${notificationMessage}`);
+      }
+
+      function adminLogin() {
+        const username = document.getElementById("admin-username").value;
+        const password = document.getElementById("admin-password").value;
+
+        if (!username || !password) {
+          showStatus("admin-status", "Please fill all fields", false);
+          return;
+        }
+
+        if (username === "admin" && password === "admin123") {
+          isAdmin = true;
+          document.getElementById("user-name").textContent = "Admin";
+          document.getElementById("admin-dashboard").style.display = "block";
+          showStatus("admin-status", "Admin login successful!", true);
+          loadAdminData();
+        } else {
+          showStatus("admin-status", "Invalid credentials", false);
+        }
+      }
+
+      function loadAdminData() {
+        if (!isAdmin) {
+          showStatus("admin-status", "Please log in as admin", false);
+          return;
+        }
+
+        const users = getUsers();
+        const bookings = getBookings();
+        const payments = getPayments();
+        const feedback = getFeedback();
+        const deliveryIssues = getDeliveryIssues();
+        const sosAlerts = getSOSAlerts();
+
+        document.getElementById("admin-total-sos").textContent =
+          sosAlerts.length;
+        document.getElementById("users-table").innerHTML = `
+          <h3>Users</h3>
+          <table>
+            <tr><th>Consumer No</th><th>Name</th><th>Mobile</th></tr>
+            ${users
+              .map(
+                (u) =>
+                  `<tr><td>${u.consumerNo}</td><td>${u.name}</td><td>${u.mobile}</td></tr>`
+              )
+              .join("")}
+          </table>
+        `;
+        document.getElementById("bookings-table").innerHTML = `
+          <h3>Bookings</h3>
+          <table>
+            <tr><th>ID</th><th>Consumer No</th><th>Status</th></tr>
+            ${bookings
+              .map(
+                (b) =>
+                  `<tr><td>${b.id}</td><td>${b.consumerNo}</td><td>${b.status}</td></tr>`
+              )
+              .join("")}
+          </table>
+        `;
+        document.getElementById("payments-table").innerHTML = `
+          <h3>Payments</h3>
+          <table>
+            <tr><th>ID</th><th>Booking ID</th><th>Amount</th></tr>
+            ${payments
+              .map(
+                (p) =>
+                  `<tr><td>${p.id}</td><td>${p.bookingId}</td><td>₹${p.amount}</td></tr>`
+              )
+              .join("")}
+          </table>
+        `;
+        document.getElementById("feedback-table").innerHTML = `
+          <h3>Feedback</h3>
+          <table>
+            <tr><th>ID</th><th>Consumer No</th><th>Category</th></tr>
+            ${feedback
+              .map(
+                (f) =>
+                  `<tr><td>${f.id}</td><td>${f.consumerNo}</td><td>${f.category}</td></tr>`
+              )
+              .join("")}
+          </table>
+        `;
+        document.getElementById("delivery-issues-table").innerHTML = `
+          <h3>Delivery Issues</h3>
+          <table>
+            <tr><th>ID</th><th>Booking ID</th><th>Status</th></tr>
+            ${deliveryIssues
+              .map(
+                (d) =>
+                  `<tr><td>${d.id}</td><td>${d.bookingId}</td><td>${d.status}</td></tr>`
+              )
+              .join("")}
+          </table>
+        `;
+        document.getElementById("sos-alerts-table").innerHTML = `
+          <h3>SOS Alerts</h3>
+          <table>
+            <tr><th>ID</th><th>Consumer No</th><th>Status</th></tr>
+            ${sosAlerts
+              .map(
+                (s) =>
+                  `<tr><td>${s.id}</td><td>${s.consumerNo}</td><td>${s.status}</td></tr>`
+              )
+              .join("")}
+          </table>
+        `;
+      }
+
+      function login() {
+        const consumerNo = document
+          .getElementById("login-consumerNo")
+          .value.toUpperCase()
+          .trim();
+        const mobile = document.getElementById("login-mobile").value.trim();
+
+        if (!consumerNo || !mobile) {
+          showStatus("login-status", "Please fill all fields", false);
+          return;
+        }
+
+        if (!/^[0-9]{10}$/.test(mobile)) {
+          showStatus("login-status", "Mobile number must be 10 digits", false);
+          return;
+        }
+
+        const user = getUser(consumerNo, mobile);
+        if (!user) {
+          showStatus(
+            "login-status",
+            "Invalid Consumer Number or Mobile Number",
+            false
+          );
+          return;
+        }
+
+        currentUser = user;
+        document.getElementById("user-name").textContent = user.name;
+        showStatus("login-status", "Logged in successfully!", true);
+        console.log("User logged in:", currentUser);
+        showSection("dashboard");
+      }
+
+      function logout() {
+        currentUser = null;
+        bookingData = {};
+        paymentData = {};
+        isAdmin = false;
+        isSidebarVisible = false;
+        const sidebar = document.getElementById("sidebar");
+        const mainContent = document.getElementById("main-content");
+        const hamburger = document.getElementById("hamburger");
+        sidebar.classList.remove("visible");
+        mainContent.classList.remove("sidebar-visible");
+        hamburger.classList.remove("active");
+        document.querySelectorAll("input, textarea, select").forEach((input) => {
+            if (input.id !== 'register-requestNo' && input.id !== 'register-appliedDate') { // Keep these specific fields if needed
+                 input.value = "";
+            }
+            if(input.tagName === 'SELECT') input.selectedIndex = 0; // Reset select
+        });
+        document.getElementById("user-name").textContent = "Guest";
+        document.getElementById("admin-dashboard").style.display = "none";
+        document.getElementById("user-dropdown").classList.remove("active");
+        showSection("home");
+      }
+
+      function populateProfileForm() {
+        if (!currentUser) {
+          showStatus(
+            "update-status",
+            "Please log in to update your profile.",
+            false
+          );
+          showSection("home");
+          return;
+        }
+
+        document.getElementById("update-name").value = currentUser.name || "";
+        document.getElementById("update-email").value = currentUser.email || "";
+        document.getElementById("update-mobile").value =
+          currentUser.mobile || "";
+        document.getElementById("update-address").value =
+          currentUser.address || "";
+        document.getElementById("update-state").value = currentUser.state || "";
+        document.getElementById("update-pin").value = currentUser.pin || "";
+      }
+
+      function updateProfile() {
+        const name = document.getElementById("update-name").value;
+        const email = document.getElementById("update-email").value;
+        const mobile = document.getElementById("update-mobile").value;
+        const address = document.getElementById("update-address").value;
+        const state = document.getElementById("update-state").value;
+        const pin = document.getElementById("update-pin").value;
+
+        if (!name || !email || !mobile || !address || !state || !pin) {
+          showStatus("update-status", "Please fill all fields", false);
+          return;
+        }
+
+        if (!/^[0-9]{10}$/.test(mobile)) {
+          showStatus("update-status", "Mobile number must be 10 digits", false);
+          return;
+        }
+
+        if (!/^[0-9]{6}$/.test(pin)) {
+          showStatus("update-status", "PIN code must be 6 digits", false);
+          return;
+        }
+
+        const existingUser = getUserByEmailOrMobile(email, mobile);
+        if (
+          existingUser &&
+          existingUser.consumerNo !== currentUser.consumerNo
+        ) {
+          showStatus(
+            "update-status",
+            "Email or Mobile already registered by another user",
+            false
+          );
+          return;
+        }
+
+        const updatedUser = {
+          name,
+          email,
+          mobile,
+          address,
+          state,
+          pin,
+          lastUpdated: new Date().toISOString(),
+        };
+
+        updateUser(currentUser.consumerNo, updatedUser);
+        currentUser = { ...currentUser, ...updatedUser };
+        document.getElementById("user-name").textContent = name;
+
+        const updateMessage = `Profile updated successfully for Consumer ${currentUser.consumerNo}!`;
+        sendSMS(mobile, updateMessage);
+        showStatus(
+          "update-status",
+          `Profile updated successfully! An SMS has been sent to ${mobile}.`,
+          true
+        );
+
+        setTimeout(() => {
+          showSection("dashboard");
+        }, 3000);
+      }
+
+      function registerUser() {
+        const requestNo = document.getElementById("register-requestNo").value;
+        const name = document.getElementById("register-name").value;
+        const email = document.getElementById("register-email").value;
+        const dobString = document.getElementById("register-dob").value;
+        const marital = document.getElementById("register-marital").value;
+        const mobile = document.getElementById("register-mobile").value;
+        const gender = document.getElementById("register-gender").value;
+        const nationality = document.getElementById(
+          "register-nationality"
+        ).value;
+        const address = document.getElementById("register-address").value;
+        const appliedDate = document.getElementById(
+          "register-appliedDate"
+        ).value;
+        const state = document.getElementById("register-state").value;
+        const aadhaar = document.getElementById("register-aadhaar").value;
+        const related = document.getElementById("register-related").value;
+        const relatedFirstName = document.getElementById(
+          "register-related-firstName"
+        ).value;
+        const relatedLastName = document.getElementById(
+          "register-related-lastName"
+        ).value;
+        const relatedAddress = document.getElementById(
+          "register-related-address"
+        ).value;
+        const city = document.getElementById("register-city").value;
+        const pin = document.getElementById("register-pin").value;
+
+        if (
+          !name || !email || !dobString || !marital || !mobile || !gender ||
+          !nationality || !address || !appliedDate || !state || !aadhaar ||
+          !related || !relatedFirstName || !relatedLastName || !relatedAddress ||
+          !city || !pin
+        ) {
+          showStatus("register-status", "Please fill all fields", false);
+          return;
+        }
+
+        const birthDate = new Date(dobString);
+        const todayForAge = new Date();
+        let age = todayForAge.getFullYear() - birthDate.getFullYear();
+        const monthDiff = todayForAge.getMonth() - birthDate.getMonth();
+        if (monthDiff < 0 || (monthDiff === 0 && todayForAge.getDate() < birthDate.getDate())) {
+            age--;
+        }
+
+        if (age < 18) {
+            showStatus("register-status", "You must be at least 18 years old to register.", false);
+            return;
+        }
+
+
+        if (!/^[0-9]{10}$/.test(mobile)) {
+          showStatus(
+            "register-status",
+            "Mobile number must be 10 digits",
+            false
+          );
+          return;
+        }
+
+        if (!/^[0-9]{6}$/.test(pin)) {
+          showStatus("register-status", "PIN code must be 6 digits", false);
+          return;
+        }
+
+        if (!/^[0-9]{12}$/.test(aadhaar)) {
+          showStatus(
+            "register-status",
+            "Aadhaar number must be 12 digits",
+            false
+          );
+          return;
+        }
+
+        const existingUser = getUserByEmailOrMobile(email, mobile);
+        if (existingUser) {
+          showStatus(
+            "register-status",
+            "Email or Mobile already registered",
+            false
+          );
+          return;
+        }
+
+        const consumerNo = generateId().toUpperCase();
+        const user = {
+          consumerNo,
+          requestNo,
+          name,
+          email,
+          dob: dobString,
+          marital,
+          mobile,
+          gender,
+          nationality,
+          address,
+          appliedDate,
+          state,
+          aadhaar,
+          related,
+          relatedFirstName,
+          relatedLastName,
+          relatedAddress,
+          city,
+          pin,
+          registeredAt: new Date().toISOString(),
+          status: "Approved",
+        };
+
+        const users = getUsers();
+        users.push(user);
+        saveUsers(users);
+        currentUser = user; // Log in the new user
+
+        const consumerIdMessage = `Welcome to Indane! Your Consumer Number is ${consumerNo}. This is your permanent ID. Please save it securely.`;
+        sendSMS(mobile, consumerIdMessage);
+
+        const successMessage = `Registration successful for ${name}! You can now log in using your Consumer Number.`;
+        sendSMS(mobile, successMessage);
+
+        document.getElementById(
+          "consumer-display"
+        ).textContent = `Your Consumer Number: ${consumerNo}`;
+        document.getElementById("consumer-display").style.display = "block";
+        showStatus(
+          "register-status",
+          `Registered successfully! An SMS with your Consumer Number has been sent to ${mobile}.`,
+          true
+        );
+        document.getElementById("user-name").textContent = user.name; // Update header with new user's name
+
+        document
+          .querySelectorAll("#register-section input, #register-section select")
+          .forEach((input) => {
+            if (
+              input.id !== "register-requestNo" &&
+              input.id !== "register-appliedDate"
+            ) {
+              input.value = "";
+            }
+             if(input.tagName === 'SELECT') input.selectedIndex = 0;
+          });
+        
+        // Applied date should remain for the next registration, it's set by showSection
+        document.getElementById('register-appliedDate').value = new Date().toISOString().split('T')[0];
+
+
+        setTimeout(() => {
+          showSection("dashboard");
+        }, 5000);
+      }
+
+      function updateDashboard() {
+        const dashboardGrid = document.querySelector('#dashboard-section .dashboard-grid');
+        if (!dashboardGrid) return;
+
+        dashboardGrid.innerHTML = ''; // Clear existing content
+
+        const dashboardLinks = [
+            { id: 'register', text: 'New Connection', icon: '📝' },
+            { id: 'booking', text: 'Book Cylinder', icon: '🔥' },
+            { id: 'tracking', text: 'Booking History', icon: '📜' },
+            { id: 'transactions', text: 'Transaction History', icon: '💳' },
+            { id: 'payment', text: 'Make Payment', icon: '💵' },
+            { id: 'cancel', text: 'Cancel Booking', icon: '❌' },
+            { id: 'feedback', text: 'Submit Feedback', icon: '⭐' },
+            { id: 'deliveryIssues', text: 'Report Issues', icon: '⚠️' },
+            { id: 'sos', text: 'SOS Alert', icon: '🆘' },
+            { id: 'updateProfile', text: 'Update Profile', icon: '👤' } 
+        ];
+
+        dashboardLinks.forEach(link => {
+            const card = document.createElement('div');
+            card.className = 'dashboard-card dashboard-link-card'; 
+            card.innerHTML = `
+                <span class="dashboard-link-icon">${link.icon}</span>
+                <h3>${link.text}</h3>
+            `;
+            card.onclick = () => showSection(link.id);
+            dashboardGrid.appendChild(card);
+        });
+      }
+
+      function previousStep(current) {
+        if (current === "confirm") {
+          showStep("book");
+        }
+      }
+
+      function updatePaymentFields() {
+        const method = document.getElementById("payment-method").value;
+        document.getElementById("card-details").style.display =
+          method === "card" ? "block" : "none";
+        document.getElementById("upi-details").style.display =
+          method === "UPI" ? "block" : "none";
+      }
+
+      function loadPendingBookingsForPayment() {
+        const bookings = getUserBookings(currentUser.consumerNo);
+        const payments = getPayments();
+        const paidBookingIds = payments.filter(p => p.status === 'Completed').map((p) => p.bookingId);
+        
+        const pendingBookings = bookings.filter(
+          (booking) =>
+            (booking.status === "Confirmed" || booking.status === "Pending") && // Or Delivered but not paid if cash
+            !paidBookingIds.includes(booking.id)
+        );
+
+        const selectElement = document.getElementById("pay-bookingId");
+        selectElement.innerHTML = '<option value="">Select Booking ID</option>'; // Reset
+
+        pendingBookings.forEach((booking) => {
+          const option = document.createElement("option");
+          option.value = booking.id;
+          option.textContent = `${booking.id} (Booked on ${booking.bookingDate}, Amount: ₹${booking.totalAmount || 'N/A'})`;
+          selectElement.appendChild(option);
+        });
+        
+        const paymentAmountInput = document.getElementById("payment-amount");
+
+        // If navigating from booking summary, bookingData.id should be set
+        if (bookingData.id && pendingBookings.some(b => b.id === bookingData.id)) {
+            selectElement.value = bookingData.id;
+            updatePaymentDetails(); 
+        } else if (pendingBookings.length > 0) {
+            // Optionally pre-select the first one, or clear amount
+            paymentAmountInput.value = ""; // Clear amount if no specific booking is auto-selected
+        } else {
+            paymentAmountInput.value = ""; // No pending bookings, clear amount
+        }
+      }
+
+      function updatePaymentDetails() {
+        const bookingId = document.getElementById("pay-bookingId").value;
+        const paymentAmountInput = document.getElementById("payment-amount"); 
+
+        if (!bookingId) {
+            if (currentUser) {
+                document.getElementById("pay-consumerNo").value = currentUser.consumerNo;
+                document.getElementById("pay-consumerName").value = currentUser.name;
+            } else {
+                document.getElementById("pay-consumerNo").value = "";
+                document.getElementById("pay-consumerName").value = "";
+            }
+            paymentAmountInput.value = ""; 
+            return;
+        }
+
+        const booking = getBooking(bookingId, currentUser.consumerNo);
+        if (booking && typeof booking.totalAmount === 'number') { 
+            // bookingData = booking; // Update global bookingData if this specific selection should persist
+            document.getElementById("pay-consumerNo").value = currentUser.consumerNo;
+            document.getElementById("pay-consumerName").value = currentUser.name;
+            paymentAmountInput.value = booking.totalAmount.toFixed(2); 
+        } else {
+            paymentAmountInput.value = ""; 
+            if (!booking) console.error("Booking not found for ID:", bookingId, "for consumer:", currentUser.consumerNo);
+            if (booking && typeof booking.totalAmount !== 'number') console.error("booking.totalAmount is not a number:", booking.totalAmount);
+        }
+      }
+
+
+      function scheduleDelivery(booking) {
+        const deliveryDate = new Date(booking.deliveryDate);
+        const scheduledDate = new Date(deliveryDate);
+        scheduledDate.setDate(deliveryDate.getDate() - 1); // Schedule one day before
+
+        const delivery = {
+          id: generateId(),
+          bookingId: booking.id,
+          consumerNo: booking.consumerNo,
+          deliveryDate: booking.deliveryDate,
+          scheduledDate: scheduledDate.toISOString().split("T")[0],
+          status: "Scheduled",
+          createdAt: new Date().toISOString(),
+        };
+
+        const deliveries = getDeliveries();
+        deliveries.push(delivery);
+        saveDeliveries(deliveries);
+
+        const deliveryMessage = `Delivery for Booking ${booking.id} has been scheduled for ${delivery.scheduledDate}. Expected delivery on ${booking.deliveryDate}.`;
+        sendSMS(booking.mobile, deliveryMessage);
+
+        // Simulate reminder on delivery day
+        const today = new Date().toISOString().split("T")[0];
+        if (today === booking.deliveryDate) {
+          const reminderMessage = `Reminder: Your cylinder for Booking ${booking.id} is scheduled for delivery today (${booking.deliveryDate}).`;
+          sendSMS(booking.mobile, reminderMessage);
+        } else {
+          // This timeout would not persist across page loads/sessions in a real app
+          // For demo purposes only
+          const timeToDelivery = new Date(booking.deliveryDate).getTime() - new Date().getTime();
+          if (timeToDelivery > 0) {
+            setTimeout(() => {
+                const reminderMessage = `Reminder: Your cylinder for Booking ${booking.id} is scheduled for delivery today (${booking.deliveryDate}).`;
+                sendSMS(booking.mobile, reminderMessage); // booking.mobile might be stale if user changes number
+            }, timeToDelivery);
+          }
+        }
+        return delivery;
+      }
+
+      function nextStep(current) {
+        if (current === "book") {
+          if (!currentUser) {
+            showStatus(
+              "book-status",
+              "Please log in to book a cylinder.",
+              false
+            );
+            showSection("home");
+            return;
+          }
+
+          const cylinderType =
+            document.getElementById("book-cylinderType").value;
+          const quantity = document.getElementById("book-quantity").value;
+          const bookingDate = document.getElementById("book-bookingDate").value;
+          const deliveryAddress = document.getElementById(
+            "book-deliveryAddress"
+          ).value;
+
+          if (!cylinderType || !quantity || !deliveryAddress) {
+            showStatus("book-status", "Please fill all fields", false);
+            return;
+          }
+
+          if (quantity !== "1") {
+            showStatus("book-status", "Quantity must be 1 per booking", false);
+            return;
+          }
+
+          if (checkMonthlyBookingLimit(currentUser.consumerNo)) {
+            showStatus(
+              "book-status",
+              "You have reached the maximum limit of 3 cylinders for this month.",
+              false
+            );
+            return;
+          }
+
+          const isAvailable = true; // Simulate availability
+          if (!isAvailable) {
+            showStatus(
+              "book-status",
+              "Gas not available at the moment.",
+              false
+            );
+            return;
+          }
+
+          const pricePerCylinder = cylinderPrices[cylinderType];
+          if (!pricePerCylinder) {
+            showStatus("book-status", "Invalid cylinder type selected.", false);
+            return;
+          }
+          const totalAmount = pricePerCylinder * parseInt(quantity);
+          const deliveryDate = calculateDeliveryDate(bookingDate);
+
+          // Local bookingData for this flow
+          bookingData = {
+            id: generateId(),
+            consumerNo: currentUser.consumerNo,
+            mobile: currentUser.mobile,
+            cylinderType,
+            quantity: parseInt(quantity),
+            deliveryDate,
+            bookingDate,
+            deliveryAddress,
+            totalAmount, // Ensure this is set
+            status: "Pending", // Initial status
+            createdAt: new Date().toISOString(),
+          };
+
+          // Save to localStorage immediately
+          const bookings = getBookings();
+          bookings.push(bookingData);
+          saveBookings(bookings);
+
+          const bookingIdMessage = `Your Booking ID is ${bookingData.id}. Please note it for future reference.`;
+          sendSMS(currentUser.mobile, bookingIdMessage);
+
+          const deliveryInfoMessage = `Your cylinder will be delivered in two working days on ${bookingData.deliveryDate} (Sundays excluded).`;
+          sendSMS(currentUser.mobile, deliveryInfoMessage);
+          
+          showStatus(
+            "book-status",
+            `Booking ${bookingData.id} initiated! Proceed to confirm. An SMS has been sent to ${currentUser.mobile}.`,
+            true
+          );
+
+          document.getElementById("confirm-bookingId").textContent =
+            bookingData.id;
+          document.getElementById("confirm-cylinderType").textContent =
+            bookingData.cylinderType;
+          document.getElementById("confirm-quantity").textContent =
+            bookingData.quantity;
+          document.getElementById("confirm-deliveryDate").textContent =
+            bookingData.deliveryDate;
+          document.getElementById("49f-totalAmount").textContent =
+            bookingData.totalAmount.toFixed(2);
+          showStep("confirm");
+
+        } else if (current === "confirm") {
+          // Update status of the booking in localStorage
+          updateBooking(bookingData.id, { status: "Confirmed" });
+          bookingData.status = "Confirmed"; // Update local copy as well
+
+          const confirmMessage = `Booking ${bookingData.id} has been confirmed! Proceed to payment.`;
+          sendSMS(currentUser.mobile, confirmMessage);
+          showStatus(
+            "confirm-status",
+            `Booking ${bookingData.id} confirmed! An SMS has been sent to ${currentUser.mobile}.`,
+            true
+          );
+
+          const summaryContent = `
+            <p><strong>Booking ID:</strong> ${bookingData.id}</p>
+            <p><strong>Consumer Number:</strong> ${currentUser.consumerNo}</p>
+            <p><strong>Name:</strong> ${currentUser.name}</p>
+            <p><strong>Mobile:</strong> ${bookingData.mobile}</p>
+            <h4>Booking Details</h4>
+            <p><strong>Cylinder Type:</strong> ${bookingData.cylinderType}</p>
+            <p><strong>Quantity:</strong> ${bookingData.quantity}</p>
+            <p><strong>Delivery Date:</strong> ${bookingData.deliveryDate}</p>
+            <p><strong>Booking Date:</strong> ${bookingData.bookingDate}</p>
+            <p><strong>Delivery Address:</strong> ${bookingData.deliveryAddress}</p>
+            <p><strong>Total Amount:</strong> ₹${bookingData.totalAmount.toFixed(2)}</p>
+            <p><strong>Status:</strong> ${bookingData.status}</p>
+          `;
+          document.getElementById("summary-content").innerHTML = summaryContent;
+          document.getElementById(
+            "delivery-message"
+          ).textContent = `Delivery scheduled for ${bookingData.deliveryDate}.`;
+          showStep("summary");
+        }
+      }
+
+      function makePayment() {
+        const bookingId = document.getElementById("pay-bookingId").value;
+        const method = document.getElementById("payment-method").value;
+        let reference =
+          document.getElementById("payment-reference").value.trim() ||
+          generateId();
+        let paymentSuccess = true;
+        let paymentDetails = {};
+
+        if (!bookingId || !method) {
+          showStatus(
+            "payment-status",
+            "Please select a Booking ID and Payment Method",
+            false
+          );
+          return;
+        }
+        
+        const selectedBooking = getBooking(bookingId, currentUser.consumerNo); // Fetch the booking to get amount
+        if (!selectedBooking || typeof selectedBooking.totalAmount !== 'number') {
+            showStatus("payment-status", "Could not retrieve booking details or amount.", false);
+            return;
+        }
+
+
+        if (method === "card") {
+          const cardNumber = document
+            .getElementById("card-number")
+            .value.trim();
+          const expiry = document.getElementById("card-expiry").value.trim();
+          const cvv = document.getElementById("card-cvv").value.trim();
+
+          if (!cardNumber || !expiry || !cvv) {
+            showStatus("payment-status", "Please fill all card details", false);
+            return;
+          }
+
+          if (!/^\d{16}$/.test(cardNumber)) {
+            showStatus(
+              "payment-status",
+              "Card number must be 16 digits",
+              false
+            );
+            paymentSuccess = false;
+          }
+
+          if (!/^(0[1-9]|1[0-2])\/\d{2}$/.test(expiry)) {
+            showStatus("payment-status", "Expiry date must be in MM/YY format (e.g., 03/25)", false);
+            paymentSuccess = false;
+          } else {
+              const [monthStr, yearSuffixStr] = expiry.split('/');
+              const expiryMonth = parseInt(monthStr, 10);
+              const currentYearFull = new Date().getFullYear();
+              const currentMonth = new Date().getMonth() + 1; // JS month is 0-indexed
+              
+              // Assuming current century for 2-digit year (e.g., 25 -> 2025)
+              let expiryYearFull = parseInt(String(currentYearFull).substring(0,2) + yearSuffixStr, 10);
+
+              if (expiryYearFull < currentYearFull || (expiryYearFull === currentYearFull && expiryMonth < currentMonth)) {
+                  showStatus("payment-status", "Card has expired.", false);
+                  paymentSuccess = false;
+              }
+          }
+
+
+          if (!/^\d{3,4}$/.test(cvv)) { // Allow 3 or 4 digits for CVV
+            showStatus("payment-status", "CVV must be 3 or 4 digits", false);
+            paymentSuccess = false;
+          }
+
+          paymentDetails = { cardNumber: cardNumber.slice(-4), expiry, cvvPresent: true }; // Store only last 4 digits
+        }
+
+        if (method === "UPI") {
+          const upiId = document.getElementById("upi-id").value.trim();
+          if (!upiId) {
+            showStatus("payment-status", "Please enter UPI ID", false);
+            return;
+          }
+
+          if (!/^[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z]{2,64}$/.test(upiId)) {
+            showStatus("payment-status", "Invalid UPI ID format", false);
+            paymentSuccess = false;
+          }
+          paymentDetails.upiId = upiId;
+        }
+
+        if (!paymentSuccess) return;
+
+
+        const payment = {
+          id: generateId(),
+          bookingId: selectedBooking.id,
+          consumerNo: currentUser.consumerNo,
+          amount: selectedBooking.totalAmount,
+          method,
+          reference,
+          status: method === "cash" ? "Pending" : "Completed", // Cash on delivery is pending until paid
+          paymentDate:
+            method === "cash" ? null : new Date().toISOString().split("T")[0],
+          createdAt: new Date().toISOString(),
+          ...paymentDetails,
+        };
+
+        const payments = getPayments();
+        payments.push(payment);
+        savePayments(payments);
+
+        if (method !== "cash") { // For Card and UPI, assume payment leads to delivery
+          updateBooking(selectedBooking.id, { status: "Delivered" }); // Or a "Paid" status then "Delivered" by admin
+          scheduleDelivery(selectedBooking);
+        } else { // For cash, booking remains confirmed, delivery might be scheduled, payment status pending
+            // updateBooking(selectedBooking.id, { status: "Confirmed" }); // Already confirmed
+             scheduleDelivery(selectedBooking); // Schedule delivery even for COD
+        }
+
+
+        const paymentMessage = `Payment of ₹${selectedBooking.totalAmount.toFixed(2)} for Booking ${selectedBooking.id} initiated via ${method}. Reference: ${reference}.`;
+        sendSMS(currentUser.mobile, paymentMessage);
+
+        showStatus(
+          "payment-status",
+          `Payment initiated! An SMS has been sent to ${currentUser.mobile}.`,
+          true
+        );
+
+        document.getElementById("pay-bookingId").value = "";
+        document.getElementById("payment-method").value = "";
+        document.getElementById("payment-reference").value = "";
+        document.getElementById("card-number").value = "";
+        document.getElementById("card-expiry").value = "";
+        document.getElementById("card-cvv").value = "";
+        document.getElementById("upi-id").value = "";
+        document.getElementById("card-details").style.display = "none";
+        document.getElementById("upi-details").style.display = "none";
+        document.getElementById("payment-amount").value = "";
+
+
+        setTimeout(() => {
+          showSection("dashboard");
+        }, 5000); // Redirect after 5 seconds
+      }
+
+      function cancelPayment() {
+        document.getElementById("pay-bookingId").value = "";
+        document.getElementById("payment-method").value = "";
+        document.getElementById("payment-reference").value = "";
+        document.getElementById("card-number").value = "";
+        document.getElementById("card-expiry").value = "";
+        document.getElementById("card-cvv").value = "";
+        document.getElementById("upi-id").value = "";
+        document.getElementById("card-details").style.display = "none";
+        document.getElementById("upi-details").style.display = "none";
+        document.getElementById("payment-amount").value = "";
+        showStatus("payment-status", "Payment cancelled", false);
+      }
+
+      function cancelBooking() { // This is called from the booking confirmation step
+        if (bookingData && bookingData.id) {
+            updateBooking(bookingData.id, { status: "Cancelled" });
+            const cancelMessage = `Booking ${bookingData.id} has been cancelled.`;
+            sendSMS(currentUser.mobile, cancelMessage);
+            showStatus(
+                "confirm-status", // Status shown on confirm step
+                `Booking ${bookingData.id} cancelled! An SMS has been sent to ${currentUser.mobile}.`,
+                true
+            );
+            bookingData = {}; // Clear current booking flow data
+        } else {
+            showStatus("confirm-status", "No active booking to cancel from this step.", false);
+        }
+        
+        setTimeout(() => {
+          showSection("dashboard");
+        }, 3000);
+      }
+
+      function loadCancellableBookings() {
+        const bookings = getUserBookings(currentUser.consumerNo);
+        const cancellableBookings = bookings.filter(
+          (booking) =>
+            booking.status === "Pending" || booking.status === "Confirmed"
+        );
+
+        const selectElement = document.getElementById("cancel-bookingId");
+        selectElement.innerHTML = '<option value="">Select Booking ID</option>';
+
+        cancellableBookings.forEach((booking) => {
+          const option = document.createElement("option");
+          option.value = booking.id;
+          option.textContent = `${booking.id} (Booked on ${booking.bookingDate}, Status: ${booking.status})`;
+          selectElement.appendChild(option);
+        });
+      }
+
+      function cancelBookingFromPage() { // Called from Cancel Booking Page
+        const bookingId = document.getElementById("cancel-bookingId").value;
+        if (!bookingId) {
+          showStatus(
+            "cancel-status",
+            "Please select a booking to cancel",
+            false
+          );
+          return;
+        }
+
+        const booking = getBooking(bookingId, currentUser.consumerNo);
+        if (!booking) {
+          showStatus(
+            "cancel-status",
+            "Booking not found or does not belong to this consumer",
+            false
+          );
+          return;
+        }
+
+        if (booking.status !== "Pending" && booking.status !== "Confirmed") {
+          showStatus(
+            "cancel-status",
+            `This booking cannot be cancelled (Status: ${booking.status})`,
+            false
+          );
+          return;
+        }
+
+        updateBooking(bookingId, { status: "Cancelled" });
+
+        const cancelMessage = `Booking ${bookingId} has been cancelled.`;
+        sendSMS(currentUser.mobile, cancelMessage);
+        showStatus(
+          "cancel-status",
+          `Booking ${bookingId} cancelled successfully! An SMS has been sent to ${currentUser.mobile}.`,
+          true
+        );
+
+        loadCancellableBookings(); // Refresh the list
+
+        setTimeout(() => {
+          showSection("dashboard");
+        }, 3000);
+      }
+
+      function trackBooking() {
+        const bookingId = document.getElementById("track-bookingId").value;
+        if (!bookingId) {
+          showStatus("track-status", "Please enter a Booking ID", false);
+          return;
+        }
+
+        const booking = getBooking(bookingId, currentUser.consumerNo);
+        if (!booking) {
+          showStatus(
+            "track-status",
+            "Booking not found or does not belong to this consumer",
+            false
+          );
+          return;
+        }
+
+        const trackMessage = `Booking ${bookingId} Status: ${booking.status}, Expected Delivery: ${booking.deliveryDate}`;
+        showStatus("track-status", trackMessage, true);
+      }
+
+      function loadTransactionHistory() {
+        const payments = getUserPayments(currentUser.consumerNo);
+        // const bookings = getBookings(); // Not strictly needed if payment object has enough info
+        let tableHTML = `
+          <table>
+            <tr><th>Payment ID</th><th>Booking ID</th><th>Amount</th><th>Method</th><th>Status</th><th>Payment Date</th><th>Reference</th></tr>
+        `;
+
+        if (payments.length === 0) {
+          tableHTML += `<tr><td colspan="7">No transactions found.</td></tr>`;
+        } else {
+          payments.sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)).forEach((payment) => {
+            // const booking = bookings.find((b) => b.id === payment.bookingId);
+            tableHTML += `
+              <tr>
+                <td>${payment.id}</td>
+                <td>${payment.bookingId}</td>
+                <td>₹${payment.amount.toFixed(2)}</td>
+                <td>${payment.method}</td>
+                <td>${payment.status || "Pending"}</td>
+                <td>${payment.paymentDate || "N/A"}</td>
+                <td>${payment.reference || "N/A"}</td>
+              </tr>
+            `;
+          });
+        }
+
+        tableHTML += `</table>`;
+        document.getElementById("transactions-table").innerHTML = tableHTML;
+      }
+
+      function submitFeedback() {
+        const category = document.getElementById("feedback-category").value;
+        const rating = document.getElementById("feedback-rating").value;
+        const comment = document.getElementById("feedback-comment").value;
+
+        if (!category || !rating || !comment) {
+          showStatus("feedback-status", "Please fill all fields", false);
+          return;
+        }
+
+        const feedbackData = {
+          id: generateId(),
+          consumerNo: currentUser.consumerNo,
+          category,
+          rating: parseInt(rating),
+          comment,
+          createdAt: new Date().toISOString(),
+        };
+
+        const feedbackList = getFeedback();
+        feedbackList.push(feedbackData);
+        saveFeedback(feedbackList);
+
+        const feedbackMessage = `Thank you for your feedback on ${category}! We value your input.`;
+        sendSMS(currentUser.mobile, feedbackMessage);
+        showStatus(
+          "feedback-status",
+          `Feedback submitted successfully! An SMS has been sent to ${currentUser.mobile}.`,
+          true
+        );
+
+        document.getElementById("feedback-category").value = "";
+        document.getElementById("feedback-rating").value = "";
+        document.getElementById("feedback-comment").value = "";
+      }
+
+      function reportDeliveryIssue() {
+        const bookingId = document.getElementById("issue-bookingId").value;
+        const issueType = document.getElementById("issue-type").value;
+        const description = document.getElementById("issue-description").value;
+
+        if (!bookingId || !issueType || !description) {
+          showStatus("issue-status", "Please fill all fields", false);
+          return;
+        }
+
+        const booking = getBooking(bookingId, currentUser.consumerNo);
+        if (!booking) {
+          showStatus(
+            "issue-status",
+            "Booking not found or does not belong to this consumer",
+            false
+          );
+          return;
+        }
+
+        const issueData = {
+          id: generateId(),
+          bookingId,
+          consumerNo: currentUser.consumerNo,
+          issueType,
+          description,
+          createdAt: new Date().toISOString(),
+          status: "Reported",
+        };
+
+        const issues = getDeliveryIssues();
+        issues.push(issueData);
+        saveDeliveryIssues(issues);
+
+        const issueMessage = `Delivery issue reported for Booking ${bookingId}. Issue Type: ${issueType}.`;
+        sendSMS(currentUser.mobile, issueMessage);
+        showStatus(
+          "issue-status",
+          `Issue reported successfully! An SMS has been sent to ${currentUser.mobile}.`,
+          true
+        );
+
+        document.getElementById("issue-bookingId").value = "";
+        document.getElementById("issue-type").value = "";
+        document.getElementById("issue-description").value = "";
+      }
+
+      function sendSOS() {
+        if (!currentUser) {
+          showStatus("sos-status", "Please log in to send an SOS", false);
+          return;
+        }
+
+        const location = document.getElementById("sos-location").value;
+        const sosData = {
+          id: generateId(),
+          consumerNo: currentUser.consumerNo,
+          mobile: currentUser.mobile, // Added mobile to SOS data
+          location,
+          createdAt: new Date().toISOString(),
+          status: "Sent",
+        };
+
+        const sosAlerts = getSOSAlerts();
+        sosAlerts.push(sosData);
+        saveSOSAlerts(sosAlerts);
+
+        const sosMessage = `SOS Alert sent from Consumer ${currentUser.consumerNo} (Mobile: ${currentUser.mobile}) at location: ${location}.`;
+        // In a real app, this would also trigger an alert to an admin system
+        console.warn("SOS ALERT TRIGGERED:", sosData); 
+        sendSMS(currentUser.mobile, sosMessage); // SMS to user for confirmation
+        
+        // Potentially send SMS to an admin/emergency contact
+        // sendSMS("ADMIN_EMERGENCY_NUMBER", `URGENT SOS: Consumer ${currentUser.consumerNo}, Mobile: ${currentUser.mobile}, Location: ${location}`);
+
+
+        showStatus(
+          "sos-status",
+          `SOS Alert sent successfully! Emergency services will be notified (simulated). An SMS has been sent to ${currentUser.mobile}.`,
+          true
+        );
+      }
+
+      window.onload = () => {
+        showSection("home");
+      };
+    </script>
+  </body>
+</html>
